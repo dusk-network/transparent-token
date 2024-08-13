@@ -1,0 +1,14 @@
+[package]
+name = "ttoken-contract"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ttoken-types = { workspace = true }
+
+execution-core = { workspace = true }
+rusk-abi = { workspace = true }
+
+[lib]
+crate-type = ["cdylib"]

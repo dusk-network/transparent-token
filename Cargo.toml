@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["types", "contract"]
+
+[workspace.package]
+authors = ["Eduardo Leegwater Simões <eduardo@dusk.network>"]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+ttoken-types = { path = "./types", version = "=0.1.0" }
+
+execution-core = { path = "../rusk/execution-core" }
+rusk-abi = { path = "../rusk/rusk-abi" }
+
+bytecheck = { version = "0.6.12", default-features = false }
+rkyv = { version = "0.7.39", default-features = false, features = [
+	"size_32",
+	"alloc",
+	"validation",
+] }
