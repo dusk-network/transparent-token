@@ -17,6 +17,9 @@ contract: setup-compiler
 	 	          target/wasm64-unknown-unknown/release/% \
 	 	          build/%
 
+test: contract
+	@cargo test --release --manifest-path=tests/Cargo.toml
+
 setup-compiler:
 	@./scripts/setup-compiler.sh $(COMPILER_VERSION)
 
@@ -24,4 +27,4 @@ clean:
 	@cargo clean
 	@rm -rf build/
 
-.PHONY: all contract clean setup-compiler
+.PHONY: all contract test clean setup-compiler

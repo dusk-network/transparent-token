@@ -9,7 +9,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use execution_core::signatures::bls::{PublicKey, Signature};
 
 /// The data an account has in the contract.
-#[derive(Debug, Clone, Copy, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct Account {
     /// The balance of the account.

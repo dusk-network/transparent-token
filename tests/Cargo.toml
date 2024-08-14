@@ -1,14 +1,18 @@
 [package]
-name = "ttoken-contract"
+name = "ttoken-tests"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
+
+publish = false
 
 [dependencies]
 ttoken-types = { workspace = true }
 
 execution-core = { workspace = true }
-rusk-abi = { workspace = true, features = ["abi", "dlmalloc"] }
+rusk-abi = { workspace = true, features = ["host"] }
 
-[lib]
-crate-type = ["cdylib"]
+bytecheck = { workspace = true }
+rkyv = { workspace = true }
+
+rand = "0.8.5"
