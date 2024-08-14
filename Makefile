@@ -10,12 +10,12 @@ contract: setup-compiler
 	  --color=always \
 	  -Z build-std=core,alloc \
 	  --target wasm64-unknown-unknown
-	@mkdir -p target/stripped
+	@mkdir -p build
 	@find target/wasm64-unknown-unknown/release -maxdepth 1 -name "*.wasm" \
 	    | xargs -I % basename % \
 	    | xargs -I % ./scripts/strip.sh \
 	 	          target/wasm64-unknown-unknown/release/% \
-	 	          target/stripped/%
+	 	          build/%
 
 setup-compiler:
 	@./scripts/setup-compiler.sh $(COMPILER_VERSION)
