@@ -20,4 +20,8 @@ contract: setup-compiler
 setup-compiler:
 	@./scripts/setup-compiler.sh $(COMPILER_VERSION)
 
-.PHONY: all contract setup-compiler
+clean:
+	@cargo clean
+	@rm -rf build/
+
+.PHONY: all contract clean setup-compiler
