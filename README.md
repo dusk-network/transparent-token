@@ -60,7 +60,7 @@ fn name(&self) -> String;
 fn symbol(&self) -> String;
 fn decimals(&self) -> u8;
 fn total_supply(&self) -> u64;
-fn account(&self, _: PublicKey) -> Account;
+fn account(&self, _: PublicKey) -> AccountData;
 fn allowance(&self, _: Allowance) -> u64;
 fn transfer(&mut self, _: Transfer);
 fn transfer_from(&mut self, _: TransferFrom);

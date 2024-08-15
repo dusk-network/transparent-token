@@ -10,7 +10,7 @@ use execution_core::signatures::bls::PublicKey;
 use ttoken_types::*;
 
 struct TokenState {
-    accounts: BTreeMap<[u8; 193], Account>,
+    accounts: BTreeMap<[u8; 193], AccountInfo>,
     allowances: BTreeMap<[u8; 193], BTreeMap<[u8; 193], u64>>,
     supply: u64,
 }
@@ -19,7 +19,7 @@ impl TokenState {
     fn init(&mut self, pk: PublicKey, balance: u64) {
         let account_bytes = pk.to_raw_bytes();
         self.accounts
-            .insert(account_bytes, Account { balance, nonce: 0 });
+            .insert(account_bytes, AccountInfo { balance, nonce: 0 });
     }
 }
 
@@ -46,13 +46,13 @@ impl TokenState {
         self.supply
     }
 
-    fn account(&self, pk: PublicKey) -> Account {
+    fn account(&self, pk: PublicKey) -> AccountInfo {
         let account_bytes = pk.to_raw_bytes();
 
         self.accounts
             .get(&account_bytes)
             .copied()
-            .unwrap_or(Account::EMPTY)
+            .unwrap_or(AccountInfo::EMPTY)
     }
 
     fn allowance(&self, allowance: Allowance) -> u64 {
@@ -95,7 +95,7 @@ impl TokenState {
 
         let to = *transfer.to();
         let to_bytes = to.to_raw_bytes();
-        let to_account = self.accounts.entry(to_bytes).or_insert(Account::EMPTY);
+        let to_account = self.accounts.entry(to_bytes).or_insert(AccountInfo::EMPTY);
 
         to_account.balance += value;
 
@@ -114,7 +114,10 @@ impl TokenState {
         let spender = *transfer_from.spender();
         let spender_bytes = spender.to_raw_bytes();
 
-        let spender_account = self.accounts.entry(spender_bytes).or_insert(Account::EMPTY);
+        let spender_account = self
+            .accounts
+            .entry(spender_bytes)
+            .or_insert(AccountInfo::EMPTY);
         if transfer_from.nonce() != spender_account.nonce + 1 {
             panic!("Nonces must be sequential");
         }
@@ -156,7 +159,7 @@ impl TokenState {
 
         let to = *transfer_from.to();
         let to_bytes = to.to_raw_bytes();
-        let to_account = self.accounts.entry(to_bytes).or_insert(Account::EMPTY);
+        let to_account = self.accounts.entry(to_bytes).or_insert(AccountInfo::EMPTY);
 
         to_account.balance += value;
 
@@ -175,7 +178,10 @@ impl TokenState {
         let owner = *approve.owner();
         let owner_bytes = owner.to_raw_bytes();
 
-        let owner_account = self.accounts.entry(owner_bytes).or_insert(Account::EMPTY);
+        let owner_account = self
+            .accounts
+            .entry(owner_bytes)
+            .or_insert(AccountInfo::EMPTY);
         if approve.nonce() != owner_account.nonce + 1 {
             panic!("Nonces must be sequential");
         }

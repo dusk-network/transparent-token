@@ -65,7 +65,7 @@ impl ContractSession {
         self.session.call(self.contract, fn_name, fn_arg, u64::MAX)
     }
 
-    fn account(&mut self, pk: &PublicKey) -> Account {
+    fn account(&mut self, pk: &PublicKey) -> AccountInfo {
         self.call("account", pk)
             .expect("Querying an account should succeed")
             .data
@@ -94,7 +94,7 @@ fn empty_account() {
     let account = session.account(&pk);
     assert_eq!(
         account,
-        Account::EMPTY,
+        AccountInfo::EMPTY,
         "An account never transferred to should be empty"
     );
 }

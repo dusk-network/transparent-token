@@ -11,7 +11,7 @@ use execution_core::signatures::bls::{PublicKey, SecretKey, Signature};
 /// The data an account has in the contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
-pub struct Account {
+pub struct AccountInfo {
     /// The balance of the account.
     pub balance: u64,
     /// The current nonce of the account. Use the current value +1 to perform an interaction with
@@ -19,7 +19,7 @@ pub struct Account {
     pub nonce: u64,
 }
 
-impl Account {
+impl AccountInfo {
     /// An empty account.
     pub const EMPTY: Self = Self {
         balance: 0,
