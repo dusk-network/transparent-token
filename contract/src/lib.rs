@@ -5,21 +5,18 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 
-use execution_core::signatures::bls::PublicKey;
-
 use ttoken_types::*;
 
 struct TokenState {
-    accounts: BTreeMap<[u8; 193], AccountInfo>,
-    allowances: BTreeMap<[u8; 193], BTreeMap<[u8; 193], u64>>,
+    accounts: BTreeMap<Account, AccountInfo>,
+    allowances: BTreeMap<Account, BTreeMap<Account, u64>>,
     supply: u64,
 }
 
 impl TokenState {
-    fn init(&mut self, pk: PublicKey, balance: u64) {
-        let account_bytes = pk.to_raw_bytes();
+    fn init(&mut self, account: Account, balance: u64) {
         self.accounts
-            .insert(account_bytes, AccountInfo { balance, nonce: 0 });
+            .insert(account, AccountInfo { balance, nonce: 0 });
     }
 }
 
@@ -46,33 +43,27 @@ impl TokenState {
         self.supply
     }
 
-    fn account(&self, pk: PublicKey) -> AccountInfo {
-        let account_bytes = pk.to_raw_bytes();
-
+    fn account(&self, account: Account) -> AccountInfo {
         self.accounts
-            .get(&account_bytes)
+            .get(&account)
             .copied()
             .unwrap_or(AccountInfo::EMPTY)
     }
 
     fn allowance(&self, allowance: Allowance) -> u64 {
-        let owner_bytes = allowance.owner.to_raw_bytes();
-        match self.allowances.get(&owner_bytes) {
-            Some(allowances) => {
-                let spender_bytes = allowance.spender.to_raw_bytes();
-                allowances.get(&spender_bytes).copied().unwrap_or(0)
-            }
+        match self.allowances.get(&allowance.owner) {
+            Some(allowances) => allowances.get(&allowance.spender).copied().unwrap_or(0),
             None => 0,
         }
     }
 
     fn transfer(&mut self, transfer: Transfer) {
-        let from = *transfer.from();
-        let from_bytes = from.to_raw_bytes();
+        let from_key = *transfer.from();
+        let from = Account::External(from_key);
 
         let from_account = self
             .accounts
-            .get_mut(&from_bytes)
+            .get_mut(&from)
             .expect("The account has no tokens to transfer");
 
         let value = transfer.value();
@@ -89,13 +80,12 @@ impl TokenState {
 
         let sig = *transfer.signature();
         let sig_msg = transfer.signature_message().to_vec();
-        if !rusk_abi::verify_bls(sig_msg, from, sig) {
+        if !rusk_abi::verify_bls(sig_msg, from_key, sig) {
             panic!("Invalid signature");
         }
 
         let to = *transfer.to();
-        let to_bytes = to.to_raw_bytes();
-        let to_account = self.accounts.entry(to_bytes).or_insert(AccountInfo::EMPTY);
+        let to_account = self.accounts.entry(to).or_insert(AccountInfo::EMPTY);
 
         to_account.balance += value;
 
@@ -111,13 +101,10 @@ impl TokenState {
     }
 
     fn transfer_from(&mut self, transfer_from: TransferFrom) {
-        let spender = *transfer_from.spender();
-        let spender_bytes = spender.to_raw_bytes();
+        let spender_key = *transfer_from.spender();
+        let spender = Account::External(spender_key);
 
-        let spender_account = self
-            .accounts
-            .entry(spender_bytes)
-            .or_insert(AccountInfo::EMPTY);
+        let spender_account = self.accounts.entry(spender).or_insert(AccountInfo::EMPTY);
         if transfer_from.nonce() != spender_account.nonce + 1 {
             panic!("Nonces must be sequential");
         }
@@ -126,18 +113,17 @@ impl TokenState {
 
         let sig = *transfer_from.signature();
         let sig_msg = transfer_from.signature_message().to_vec();
-        if !rusk_abi::verify_bls(sig_msg, spender, sig) {
+        if !rusk_abi::verify_bls(sig_msg, spender_key, sig) {
             panic!("Invalid signature");
         }
 
         let owner = *transfer_from.owner();
-        let owner_bytes = owner.to_raw_bytes();
 
         let allowance = self
             .allowances
-            .get_mut(&owner_bytes)
+            .get_mut(&owner)
             .expect("The account has no allowances")
-            .get_mut(&spender_bytes)
+            .get_mut(&spender)
             .expect("The spender is not allowed to use the account");
 
         let value = transfer_from.value();
@@ -147,7 +133,7 @@ impl TokenState {
 
         let owner_account = self
             .accounts
-            .get_mut(&owner_bytes)
+            .get_mut(&owner)
             .expect("The account has no tokens to transfer");
 
         if owner_account.balance < value {
@@ -158,8 +144,7 @@ impl TokenState {
         owner_account.balance -= value;
 
         let to = *transfer_from.to();
-        let to_bytes = to.to_raw_bytes();
-        let to_account = self.accounts.entry(to_bytes).or_insert(AccountInfo::EMPTY);
+        let to_account = self.accounts.entry(to).or_insert(AccountInfo::EMPTY);
 
         to_account.balance += value;
 
@@ -175,13 +160,10 @@ impl TokenState {
     }
 
     fn approve(&mut self, approve: Approve) {
-        let owner = *approve.owner();
-        let owner_bytes = owner.to_raw_bytes();
+        let owner_key = *approve.owner();
+        let owner = Account::External(owner_key);
 
-        let owner_account = self
-            .accounts
-            .entry(owner_bytes)
-            .or_insert(AccountInfo::EMPTY);
+        let owner_account = self.accounts.entry(owner).or_insert(AccountInfo::EMPTY);
         if approve.nonce() != owner_account.nonce + 1 {
             panic!("Nonces must be sequential");
         }
@@ -190,20 +172,16 @@ impl TokenState {
 
         let sig = *approve.signature();
         let sig_msg = approve.signature_message().to_vec();
-        if !rusk_abi::verify_bls(sig_msg, owner, sig) {
+        if !rusk_abi::verify_bls(sig_msg, owner_key, sig) {
             panic!("Invalid signature");
         }
 
         let spender = *approve.spender();
-        let spender_bytes = spender.to_raw_bytes();
 
-        let allowances = self
-            .allowances
-            .entry(owner_bytes)
-            .or_insert(BTreeMap::new());
+        let allowances = self.allowances.entry(owner).or_insert(BTreeMap::new());
 
         let value = approve.value();
-        allowances.insert(spender_bytes, value);
+        allowances.insert(spender, value);
 
         rusk_abi::emit(
             "approve",

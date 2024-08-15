@@ -33,12 +33,14 @@ impl ContractSession {
         let deploy_sk = SecretKey::random(&mut rng);
         let deploy_pk = PublicKey::from(&deploy_sk);
 
+        let deploy_account = Account::External(deploy_pk);
+
         let contract = session
             .deploy(
                 BYTECODE,
                 ContractData::builder()
                     .owner(OWNER)
-                    .constructor_arg(&(deploy_pk, INITIAL_BALANCE)),
+                    .constructor_arg(&(deploy_account, INITIAL_BALANCE)),
                 u64::MAX,
             )
             .expect("Deploying the contract should succeed");
@@ -65,16 +67,22 @@ impl ContractSession {
         self.session.call(self.contract, fn_name, fn_arg, u64::MAX)
     }
 
-    fn account(&mut self, pk: &PublicKey) -> AccountInfo {
-        self.call("account", pk)
+    fn account(&mut self, account: impl Into<Account>) -> AccountInfo {
+        self.call("account", &account.into())
             .expect("Querying an account should succeed")
             .data
     }
 
-    fn allowance(&mut self, owner: PublicKey, spender: PublicKey) -> u64 {
-        self.call("allowance", &Allowance { owner, spender })
-            .expect("Querying an allowance should succeed")
-            .data
+    fn allowance(&mut self, owner: impl Into<Account>, spender: impl Into<Account>) -> u64 {
+        self.call(
+            "allowance",
+            &Allowance {
+                owner: owner.into(),
+                spender: spender.into(),
+            },
+        )
+        .expect("Querying an allowance should succeed")
+        .data
     }
 }
 
@@ -91,7 +99,7 @@ fn empty_account() {
     let sk = SecretKey::random(&mut rng);
     let pk = PublicKey::from(&sk);
 
-    let account = session.account(&pk);
+    let account = session.account(pk);
     assert_eq!(
         account,
         AccountInfo::EMPTY,
@@ -110,12 +118,12 @@ fn transfer() {
     let pk = PublicKey::from(&sk);
 
     assert_eq!(
-        session.account(&session.deploy_pk()).balance,
+        session.account(session.deploy_pk()).balance,
         INITIAL_BALANCE,
         "The deployed account should have the initial balance"
     );
     assert_eq!(
-        session.account(&pk).balance,
+        session.account(pk).balance,
         0,
         "The account to transfer to should have no balance"
     );
@@ -126,12 +134,12 @@ fn transfer() {
         .expect("Transferring should succeed");
 
     assert_eq!(
-        session.account(&session.deploy_pk()).balance,
+        session.account(session.deploy_pk()).balance,
         INITIAL_BALANCE - TRANSFERRED_AMOUNT,
         "The deployed account should have the transferred amount subtracted"
     );
     assert_eq!(
-        session.account(&pk).balance,
+        session.account(pk).balance,
         TRANSFERRED_AMOUNT,
         "The account transferred to should have the transferred amount"
     );
@@ -177,12 +185,12 @@ fn transfer_from() {
     let pk = PublicKey::from(&sk);
 
     assert_eq!(
-        session.account(&session.deploy_pk()).balance,
+        session.account(session.deploy_pk()).balance,
         INITIAL_BALANCE,
         "The deployed account should have the initial balance"
     );
     assert_eq!(
-        session.account(&pk).balance,
+        session.account(pk).balance,
         0,
         "The account to transfer to should have no balance"
     );
@@ -209,12 +217,12 @@ fn transfer_from() {
         .expect("Transferring from should succeed");
 
     assert_eq!(
-        session.account(&session.deploy_pk()).balance,
+        session.account(session.deploy_pk()).balance,
         INITIAL_BALANCE - TRANSFERRED_AMOUNT,
         "The deployed account should have the transferred amount subtracted"
     );
     assert_eq!(
-        session.account(&pk).balance,
+        session.account(pk).balance,
         TRANSFERRED_AMOUNT,
         "The account transferred to should have the transferred amount"
     );

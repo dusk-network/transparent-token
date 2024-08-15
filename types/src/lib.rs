@@ -3,10 +3,88 @@
 #![no_std]
 #![deny(missing_docs)]
 
+use core::cmp::Ordering;
+
 use bytecheck::CheckBytes;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use execution_core::signatures::bls::{PublicKey, SecretKey, Signature};
+use execution_core::ContractId;
+
+/// The label for an account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(CheckBytes))]
+pub enum Account {
+    /// An externally owned account.
+    External(PublicKey),
+    /// A contract account.
+    Contract(ContractId),
+}
+
+impl Account {
+    fn to_bytes(&self) -> [u8; 194] {
+        match self {
+            Account::External(pk) => {
+                let mut bytes = [0u8; 194];
+                let pk_bytes = pk.to_raw_bytes();
+
+                bytes[0] = 0;
+                bytes[1..].copy_from_slice(&pk_bytes);
+
+                bytes
+            }
+            Account::Contract(contract) => {
+                let mut bytes = [0u8; 194];
+                let contract_bytes = contract.to_bytes();
+
+                bytes[0] = 1;
+                bytes[1..1 + contract_bytes.len()].copy_from_slice(&contract_bytes);
+
+                bytes
+            }
+        }
+    }
+}
+
+impl From<PublicKey> for Account {
+    fn from(pk: PublicKey) -> Self {
+        Self::External(pk)
+    }
+}
+
+impl From<ContractId> for Account {
+    fn from(contract: ContractId) -> Self {
+        Self::Contract(contract)
+    }
+}
+
+// The implementations of `PartialOrd` and `Ord`, while technically meaningless, are extremely
+// useful for using `Account` as keys of a `BTreeMap` in the contract.
+
+impl PartialOrd for Account {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Account {
+    fn cmp(&self, other: &Self) -> Ordering {
+        use Account::*;
+
+        match (self, other) {
+            (External(lhs), External(rhs)) => {
+                let lhs = lhs.to_raw_bytes();
+                let rhs = rhs.to_raw_bytes();
+                lhs.cmp(&rhs)
+            }
+            (Contract(lhs), Contract(rhs)) => lhs.cmp(rhs),
+            // An externally owned account is defined as always "smaller" than a contract account.
+            // This ensures they are never mixed when ordering.
+            (External(_lhs), Contract(_rhs)) => Ordering::Greater,
+            (Contract(_lhs), External(_rhs)) => Ordering::Less,
+        }
+    }
+}
 
 /// The data an account has in the contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
@@ -32,9 +110,9 @@ impl AccountInfo {
 #[archive_attr(derive(CheckBytes))]
 pub struct Allowance {
     /// The account that owns the tokens.
-    pub owner: PublicKey,
+    pub owner: Account,
     /// The account allowed to spend the `owner`s tokens.
-    pub spender: PublicKey,
+    pub spender: Account,
 }
 
 /// Data used to transfer tokens from one account to another.
@@ -42,22 +120,22 @@ pub struct Allowance {
 #[archive_attr(derive(CheckBytes))]
 pub struct Transfer {
     from: PublicKey,
-    to: PublicKey,
+    to: Account,
     value: u64,
     nonce: u64,
     signature: Signature,
 }
 
 impl Transfer {
-    const SIGNATURE_MSG_SIZE: usize = 193 + 193 + 8 + 8;
+    const SIGNATURE_MSG_SIZE: usize = 193 + 194 + 8 + 8;
 
     /// Create a new transfer.
-    pub fn new(from_sk: &SecretKey, to: PublicKey, value: u64, nonce: u64) -> Self {
+    pub fn new(from_sk: &SecretKey, to: impl Into<Account>, value: u64, nonce: u64) -> Self {
         let from = PublicKey::from(from_sk);
 
         let mut transfer = Self {
             from,
-            to,
+            to: to.into(),
             value,
             nonce,
             signature: Signature::default(),
@@ -76,7 +154,7 @@ impl Transfer {
     }
 
     /// The account to transfer to.
-    pub fn to(&self) -> &PublicKey {
+    pub fn to(&self) -> &Account {
         &self.to
     }
 
@@ -105,7 +183,7 @@ impl Transfer {
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
-        let bytes = self.to.to_raw_bytes();
+        let bytes = self.to.to_bytes();
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
@@ -126,21 +204,21 @@ impl Transfer {
 #[archive_attr(derive(CheckBytes))]
 pub struct TransferFrom {
     spender: PublicKey,
-    owner: PublicKey,
-    to: PublicKey,
+    owner: Account,
+    to: Account,
     value: u64,
     nonce: u64,
     signature: Signature,
 }
 
 impl TransferFrom {
-    const SIGNATURE_MSG_SIZE: usize = 193 + 193 + 193 + 8 + 8;
+    const SIGNATURE_MSG_SIZE: usize = 193 + 194 + 194 + 8 + 8;
 
     /// Create a new transfer, spending tokens from the `owner`.
     pub fn new(
         spender_sk: &SecretKey,
-        owner: PublicKey,
-        to: PublicKey,
+        owner: impl Into<Account>,
+        to: impl Into<Account>,
         value: u64,
         nonce: u64,
     ) -> Self {
@@ -148,8 +226,8 @@ impl TransferFrom {
 
         let mut transfer_from = Self {
             spender,
-            owner,
-            to,
+            owner: owner.into(),
+            to: to.into(),
             value,
             nonce,
             signature: Signature::default(),
@@ -168,12 +246,12 @@ impl TransferFrom {
     }
 
     /// The account that owns the tokens being transferred.
-    pub fn owner(&self) -> &PublicKey {
+    pub fn owner(&self) -> &Account {
         &self.owner
     }
 
     /// The account to transfer to.
-    pub fn to(&self) -> &PublicKey {
+    pub fn to(&self) -> &Account {
         &self.to
     }
 
@@ -202,11 +280,11 @@ impl TransferFrom {
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
-        let bytes = self.owner.to_raw_bytes();
+        let bytes = self.owner.to_bytes();
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
-        let bytes = self.to.to_raw_bytes();
+        let bytes = self.to.to_bytes();
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
@@ -227,22 +305,22 @@ impl TransferFrom {
 #[archive_attr(derive(CheckBytes))]
 pub struct Approve {
     owner: PublicKey,
-    spender: PublicKey,
+    spender: Account,
     value: u64,
     nonce: u64,
     signature: Signature,
 }
 
 impl Approve {
-    const SIGNATURE_MSG_SIZE: usize = 193 + 193 + 8 + 8;
+    const SIGNATURE_MSG_SIZE: usize = 193 + 194 + 8 + 8;
 
     /// Create a new approval.
-    pub fn new(owner_sk: &SecretKey, spender: PublicKey, value: u64, nonce: u64) -> Self {
+    pub fn new(owner_sk: &SecretKey, spender: impl Into<Account>, value: u64, nonce: u64) -> Self {
         let owner = PublicKey::from(owner_sk);
 
         let mut approve = Self {
             owner,
-            spender,
+            spender: spender.into(),
             value,
             nonce,
             signature: Signature::default(),
@@ -261,7 +339,7 @@ impl Approve {
     }
 
     /// The account to allow spending tokens from.
-    pub fn spender(&self) -> &PublicKey {
+    pub fn spender(&self) -> &Account {
         &self.spender
     }
 
@@ -290,7 +368,7 @@ impl Approve {
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
-        let bytes = self.spender.to_raw_bytes();
+        let bytes = self.spender.to_bytes();
         msg[offset..][..bytes.len()].copy_from_slice(&bytes);
         offset += bytes.len();
 
@@ -311,11 +389,11 @@ impl Approve {
 #[archive_attr(derive(CheckBytes))]
 pub struct TransferEvent {
     /// The account tokens are transferred from.
-    pub owner: PublicKey,
+    pub owner: Account,
     /// The account spending the tokens, set if `transfer_from` is used.
-    pub spender: Option<PublicKey>,
+    pub spender: Option<Account>,
     /// The account receiving the tokens.
-    pub to: PublicKey,
+    pub to: Account,
     /// The value transferred.
     pub value: u64,
 }
@@ -325,9 +403,9 @@ pub struct TransferEvent {
 #[archive_attr(derive(CheckBytes))]
 pub struct ApproveEvent {
     /// The account allowing the transfer.
-    pub owner: PublicKey,
+    pub owner: Account,
     /// The allowed spender.
-    pub spender: PublicKey,
+    pub spender: Account,
     /// The value `spender` is allowed to spend.
     pub value: u64,
 }
