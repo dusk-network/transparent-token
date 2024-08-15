@@ -165,6 +165,66 @@ fn approve() {
     );
 }
 
+#[test]
+fn transfer_from() {
+    const APPROVED_AMOUNT: u64 = INITIAL_BALANCE / 2;
+    const TRANSFERRED_AMOUNT: u64 = APPROVED_AMOUNT / 2;
+
+    let mut session = ContractSession::new();
+
+    let mut rng = StdRng::seed_from_u64(0xBEEF);
+    let sk = SecretKey::random(&mut rng);
+    let pk = PublicKey::from(&sk);
+
+    assert_eq!(
+        session.account(&session.deploy_pk()).balance,
+        INITIAL_BALANCE,
+        "The deployed account should have the initial balance"
+    );
+    assert_eq!(
+        session.account(&pk).balance,
+        0,
+        "The account to transfer to should have no balance"
+    );
+    assert_eq!(
+        session.allowance(session.deploy_pk(), pk),
+        0,
+        "The account should not be allowed to spend tokens from the deployed account"
+    );
+
+    let approve = Approve::new(&session.deploy_sk, pk, APPROVED_AMOUNT, 1);
+    session
+        .call::<_, ()>("approve", &approve)
+        .expect("Approving should succeed");
+
+    assert_eq!(
+        session.allowance(session.deploy_pk(), pk),
+        APPROVED_AMOUNT,
+        "The account should be allowed to spend tokens from the deployed account"
+    );
+
+    let transfer_from = TransferFrom::new(&sk, session.deploy_pk(), pk, TRANSFERRED_AMOUNT, 1);
+    session
+        .call::<_, ()>("transfer_from", &transfer_from)
+        .expect("Transferring from should succeed");
+
+    assert_eq!(
+        session.account(&session.deploy_pk()).balance,
+        INITIAL_BALANCE - TRANSFERRED_AMOUNT,
+        "The deployed account should have the transferred amount subtracted"
+    );
+    assert_eq!(
+        session.account(&pk).balance,
+        TRANSFERRED_AMOUNT,
+        "The account transferred to should have the transferred amount"
+    );
+    assert_eq!(
+        session.allowance(session.deploy_pk(), pk),
+        APPROVED_AMOUNT - TRANSFERRED_AMOUNT,
+        "The account should have the transferred amount subtracted from its allowance"
+    );
+}
+
 fn main() {
     unreachable!("`main` should never run for this crate");
 }
