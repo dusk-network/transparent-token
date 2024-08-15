@@ -6,7 +6,7 @@
 use bytecheck::CheckBytes;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use execution_core::signatures::bls::{PublicKey, Signature};
+use execution_core::signatures::bls::{PublicKey, SecretKey, Signature};
 
 /// The data an account has in the contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
@@ -50,6 +50,25 @@ pub struct Transfer {
 
 impl Transfer {
     const SIGNATURE_MSG_SIZE: usize = 193 + 193 + 8 + 8;
+
+    /// Create a new transfer.
+    pub fn new(from_sk: &SecretKey, to: PublicKey, value: u64, nonce: u64) -> Self {
+        let from = PublicKey::from(from_sk);
+
+        let mut transfer = Self {
+            from,
+            to,
+            value,
+            nonce,
+            signature: Signature::default(),
+        };
+
+        let sig_msg = transfer.signature_message();
+        let sig = from_sk.sign(&sig_msg);
+        transfer.signature = sig;
+
+        transfer
+    }
 
     /// The account to transfer from.
     pub fn from(&self) -> &PublicKey {
@@ -116,6 +135,32 @@ pub struct TransferFrom {
 
 impl TransferFrom {
     const SIGNATURE_MSG_SIZE: usize = 193 + 193 + 193 + 8 + 8;
+
+    /// Create a new transfer, spending tokens from the `owner`.
+    pub fn new(
+        spender_sk: &SecretKey,
+        owner: PublicKey,
+        to: PublicKey,
+        value: u64,
+        nonce: u64,
+    ) -> Self {
+        let spender = PublicKey::from(spender_sk);
+
+        let mut transfer_from = Self {
+            spender,
+            owner,
+            to,
+            value,
+            nonce,
+            signature: Signature::default(),
+        };
+
+        let sig_msg = transfer_from.signature_message();
+        let sig = spender_sk.sign(&sig_msg);
+        transfer_from.signature = sig;
+
+        transfer_from
+    }
 
     /// The account spending the tokens.
     pub fn spender(&self) -> &PublicKey {
@@ -190,6 +235,25 @@ pub struct Approve {
 
 impl Approve {
     const SIGNATURE_MSG_SIZE: usize = 193 + 193 + 8 + 8;
+
+    /// Create a new approval.
+    pub fn new(owner_sk: &SecretKey, spender: PublicKey, value: u64, nonce: u64) -> Self {
+        let owner = PublicKey::from(owner_sk);
+
+        let mut approve = Self {
+            owner,
+            spender,
+            value,
+            nonce,
+            signature: Signature::default(),
+        };
+
+        let sig_msg = approve.signature_message();
+        let sig = owner_sk.sign(&sig_msg);
+        approve.signature = sig;
+
+        approve
+    }
 
     /// The account to allow the transfer of tokens.
     pub fn owner(&self) -> &PublicKey {

@@ -15,6 +15,8 @@ const BYTECODE: &[u8] = include_bytes!("../../build/ttoken_contract.wasm");
 const OWNER: [u8; 64] = [0u8; 64];
 const INITIAL_BALANCE: u64 = 1000;
 
+type Result<T, Error = PiecrustError> = std::result::Result<T, Error>;
+
 struct ContractSession {
     deploy_pk: PublicKey,
     deploy_sk: SecretKey,
@@ -49,7 +51,11 @@ impl ContractSession {
         }
     }
 
-    fn call<A, R>(&mut self, fn_name: &str, fn_arg: &A) -> Result<CallReceipt<R>, PiecrustError>
+    fn deploy_pk(&self) -> PublicKey {
+        self.deploy_pk
+    }
+
+    fn call<A, R>(&mut self, fn_name: &str, fn_arg: &A) -> Result<CallReceipt<R>>
     where
         A: for<'b> Serialize<StandardBufSerializer<'b>>,
         A::Archived: for<'b> CheckBytes<DefaultValidator<'b>>,
@@ -57,6 +63,12 @@ impl ContractSession {
         R::Archived: Deserialize<R, Infallible> + for<'b> CheckBytes<DefaultValidator<'b>>,
     {
         self.session.call(self.contract, fn_name, fn_arg, u64::MAX)
+    }
+
+    fn account(&mut self, pk: &PublicKey) -> Account {
+        self.call("account", pk)
+            .expect("Querying an account should succeed")
+            .data
     }
 }
 
@@ -73,12 +85,50 @@ fn empty_account() {
     let sk = SecretKey::random(&mut rng);
     let pk = PublicKey::from(&sk);
 
-    let account: Account = session
-        .call("account", &pk)
-        .expect("Querying an account should succeed")
-        .data;
+    let account = session.account(&pk);
+    assert_eq!(
+        account,
+        Account::EMPTY,
+        "An account never transferred to should be empty"
+    );
+}
 
-    assert_eq!(account, Account::EMPTY);
+#[test]
+fn transfer() {
+    const TRANSFERRED_AMOUNT: u64 = INITIAL_BALANCE / 2;
+
+    let mut session = ContractSession::new();
+
+    let mut rng = StdRng::seed_from_u64(0xBEEF);
+    let sk = SecretKey::random(&mut rng);
+    let pk = PublicKey::from(&sk);
+
+    assert_eq!(
+        session.account(&session.deploy_pk()).balance,
+        INITIAL_BALANCE,
+        "The deployed account should have the initial balance"
+    );
+    assert_eq!(
+        session.account(&pk).balance,
+        0,
+        "The account to transfer to should have no balance"
+    );
+
+    let transfer = Transfer::new(&session.deploy_sk, pk, 500, 1);
+    session
+        .call::<_, ()>("transfer", &transfer)
+        .expect("Transferring should succeed");
+
+    assert_eq!(
+        session.account(&session.deploy_pk()).balance,
+        INITIAL_BALANCE - TRANSFERRED_AMOUNT,
+        "The deployed account should"
+    );
+    assert_eq!(
+        session.account(&pk).balance,
+        TRANSFERRED_AMOUNT,
+        "The account transferred to should have the transferred amount"
+    );
 }
 
 fn main() {
