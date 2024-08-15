@@ -15,6 +15,14 @@ struct TokenState {
     supply: u64,
 }
 
+impl TokenState {
+    fn init(&mut self, pk: PublicKey, balance: u64) {
+        let account_bytes = pk.to_raw_bytes();
+        self.accounts
+            .insert(account_bytes, Account { balance, nonce: 0 });
+    }
+}
+
 static mut STATE: TokenState = TokenState {
     accounts: BTreeMap::new(),
     allowances: BTreeMap::new(),
@@ -200,6 +208,11 @@ impl TokenState {
             },
         );
     }
+}
+
+#[no_mangle]
+unsafe fn init(arg_len: u32) -> u32 {
+    rusk_abi::wrap_call(arg_len, |(pk, balance)| STATE.init(pk, balance))
 }
 
 #[no_mangle]

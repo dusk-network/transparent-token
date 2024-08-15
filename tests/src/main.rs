@@ -13,8 +13,11 @@ use ttoken_types::*;
 
 const BYTECODE: &[u8] = include_bytes!("../../build/ttoken_contract.wasm");
 const OWNER: [u8; 64] = [0u8; 64];
+const INITIAL_BALANCE: u64 = 1000;
 
 struct ContractSession {
+    deploy_pk: PublicKey,
+    deploy_sk: SecretKey,
     contract: ContractId,
     session: Session,
 }
@@ -24,11 +27,26 @@ impl ContractSession {
         let vm = rusk_abi::new_ephemeral_vm().expect("Creating VM should succeed");
         let mut session = rusk_abi::new_genesis_session(&vm);
 
+        let mut rng = StdRng::seed_from_u64(0xF0CACC1A);
+        let deploy_sk = SecretKey::random(&mut rng);
+        let deploy_pk = PublicKey::from(&deploy_sk);
+
         let contract = session
-            .deploy(BYTECODE, ContractData::builder().owner(OWNER), u64::MAX)
+            .deploy(
+                BYTECODE,
+                ContractData::builder()
+                    .owner(OWNER)
+                    .constructor_arg(&(deploy_pk, INITIAL_BALANCE)),
+                u64::MAX,
+            )
             .expect("Deploying the contract should succeed");
 
-        Self { contract, session }
+        Self {
+            deploy_sk,
+            deploy_pk,
+            contract,
+            session,
+        }
     }
 
     fn call<A, R>(&mut self, fn_name: &str, fn_arg: &A) -> Result<CallReceipt<R>, PiecrustError>
