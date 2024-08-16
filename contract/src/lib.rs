@@ -98,6 +98,16 @@ impl TokenState {
                 value,
             },
         );
+
+        // if the transfer is to a contract, the acceptance function of said contract is called. if
+        // it fails (panic or OoG) the transfer also fails.
+        if let Account::Contract(contract) = to {
+            if let Err(err) =
+                rusk_abi::call::<_, ()>(contract, "token_received", &TransferInfo { from, value })
+            {
+                panic!("Failed calling `token_received` on the receiving contract: {err}");
+            }
+        }
     }
 
     fn transfer_from(&mut self, transfer_from: TransferFrom) {
@@ -157,6 +167,18 @@ impl TokenState {
                 value,
             },
         );
+
+        // if the transfer is to a contract, the acceptance function of said contract is called. if
+        // it fails (panic or OoG) the transfer also fails.
+        if let Account::Contract(contract) = to {
+            if let Err(err) = rusk_abi::call::<_, ()>(
+                contract,
+                "token_received",
+                &TransferInfo { from: owner, value },
+            ) {
+                panic!("Failed calling `token_received` on the receiving contract: {err}");
+            }
+        }
     }
 
     fn approve(&mut self, approve: Approve) {

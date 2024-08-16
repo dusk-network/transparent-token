@@ -106,7 +106,7 @@ impl AccountInfo {
 }
 
 /// Arguments to query for how much of an allowance a spender has of the `owner` account.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct Allowance {
     /// The account that owns the tokens.
@@ -116,7 +116,7 @@ pub struct Allowance {
 }
 
 /// Data used to transfer tokens from one account to another.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct Transfer {
     from: PublicKey,
@@ -200,7 +200,7 @@ impl Transfer {
 }
 
 /// Data used to transfer tokens from an owner to a recipient, by an allowed party.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct TransferFrom {
     spender: PublicKey,
@@ -301,7 +301,7 @@ impl TransferFrom {
 }
 
 /// Data used to approve spending tokens from a user's account.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct Approve {
     owner: PublicKey,
@@ -385,7 +385,7 @@ impl Approve {
 }
 
 /// Event emitted when tokens are transferred from one account to another.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct TransferEvent {
     /// The account tokens are transferred from.
@@ -399,7 +399,7 @@ pub struct TransferEvent {
 }
 
 /// Event emitted when a spender is approved on an account.
-#[derive(Debug, Clone, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
 #[archive_attr(derive(CheckBytes))]
 pub struct ApproveEvent {
     /// The account allowing the transfer.
@@ -407,5 +407,15 @@ pub struct ApproveEvent {
     /// The allowed spender.
     pub spender: Account,
     /// The value `spender` is allowed to spend.
+    pub value: u64,
+}
+
+/// Used to inform a contract of the source of funds they're receiving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(CheckBytes))]
+pub struct TransferInfo {
+    /// The originating account of the funds transferred to the contract.
+    pub from: Account,
+    /// The number of tokens transferred.
     pub value: u64,
 }
