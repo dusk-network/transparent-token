@@ -4,6 +4,7 @@ extern crate alloc;
 
 use alloc::collections::BTreeMap;
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use ttoken_types::*;
 
@@ -14,9 +15,12 @@ struct TokenState {
 }
 
 impl TokenState {
-    fn init(&mut self, account: Account, balance: u64) {
-        self.accounts
-            .insert(account, AccountInfo { balance, nonce: 0 });
+    fn init(&mut self, accounts: Vec<(Account, u64)>) {
+        for (account, balance) in accounts {
+            let account = self.accounts.entry(account).or_insert(AccountInfo::EMPTY);
+            account.balance += balance;
+            self.supply += balance;
+        }
     }
 }
 
@@ -110,24 +114,24 @@ impl TokenState {
         }
     }
 
-    fn transfer_from(&mut self, transfer_from: TransferFrom) {
-        let spender_key = *transfer_from.spender();
+    fn transfer_from(&mut self, transfer: TransferFrom) {
+        let spender_key = *transfer.spender();
         let spender = Account::External(spender_key);
 
         let spender_account = self.accounts.entry(spender).or_insert(AccountInfo::EMPTY);
-        if transfer_from.nonce() != spender_account.nonce + 1 {
+        if transfer.nonce() != spender_account.nonce + 1 {
             panic!("Nonces must be sequential");
         }
 
         spender_account.nonce += 1;
 
-        let sig = *transfer_from.signature();
-        let sig_msg = transfer_from.signature_message().to_vec();
+        let sig = *transfer.signature();
+        let sig_msg = transfer.signature_message().to_vec();
         if !rusk_abi::verify_bls(sig_msg, spender_key, sig) {
             panic!("Invalid signature");
         }
 
-        let owner = *transfer_from.owner();
+        let owner = *transfer.owner();
 
         let allowance = self
             .allowances
@@ -136,7 +140,7 @@ impl TokenState {
             .get_mut(&spender)
             .expect("The spender is not allowed to use the account");
 
-        let value = transfer_from.value();
+        let value = transfer.value();
         if value > *allowance {
             panic!("The spender can't spent the defined amount");
         }
@@ -153,7 +157,7 @@ impl TokenState {
         *allowance -= value;
         owner_account.balance -= value;
 
-        let to = *transfer_from.to();
+        let to = *transfer.to();
         let to_account = self.accounts.entry(to).or_insert(AccountInfo::EMPTY);
 
         to_account.balance += value;
@@ -175,6 +179,54 @@ impl TokenState {
                 contract,
                 "token_received",
                 &TransferInfo { from: owner, value },
+            ) {
+                panic!("Failed calling `token_received` on the receiving contract: {err}");
+            }
+        }
+    }
+
+    fn transfer_from_contract(&mut self, transfer: TransferFromContract) {
+        let contract = rusk_abi::caller().expect("Must be called by a contract");
+        let contract = Account::Contract(contract);
+
+        let contract_account = self
+            .accounts
+            .get_mut(&contract)
+            .expect("Contract has no tokens to transfer");
+
+        if contract_account.balance < transfer.value {
+            panic!("The contract doesn't have enough tokens");
+        }
+
+        contract_account.balance -= transfer.value;
+
+        let to_account = self
+            .accounts
+            .entry(transfer.to)
+            .or_insert(AccountInfo::EMPTY);
+
+        to_account.balance += transfer.value;
+
+        rusk_abi::emit(
+            "transfer",
+            TransferEvent {
+                owner: contract,
+                spender: None,
+                to: transfer.to,
+                value: transfer.value,
+            },
+        );
+
+        // if the transfer is to a contract, the acceptance function of said contract is called. if
+        // it fails (panic or OoG) the transfer also fails.
+        if let Account::Contract(to_contract) = transfer.to {
+            if let Err(err) = rusk_abi::call::<_, ()>(
+                to_contract,
+                "token_received",
+                &TransferInfo {
+                    from: contract,
+                    value: transfer.value,
+                },
             ) {
                 panic!("Failed calling `token_received` on the receiving contract: {err}");
             }
@@ -218,7 +270,7 @@ impl TokenState {
 
 #[no_mangle]
 unsafe fn init(arg_len: u32) -> u32 {
-    rusk_abi::wrap_call(arg_len, |(pk, balance)| STATE.init(pk, balance))
+    rusk_abi::wrap_call(arg_len, |arg| STATE.init(arg))
 }
 
 #[no_mangle]
@@ -259,6 +311,11 @@ unsafe fn transfer(arg_len: u32) -> u32 {
 #[no_mangle]
 unsafe fn transfer_from(arg_len: u32) -> u32 {
     rusk_abi::wrap_call(arg_len, |arg| STATE.transfer_from(arg))
+}
+
+#[no_mangle]
+unsafe fn transfer_from_contract(arg_len: u32) -> u32 {
+    rusk_abi::wrap_call(arg_len, |arg| STATE.transfer_from_contract(arg))
 }
 
 #[no_mangle]

@@ -64,10 +64,12 @@ fn account(&self, _: PublicKey) -> AccountData;
 fn allowance(&self, _: Allowance) -> u64;
 fn transfer(&mut self, _: Transfer);
 fn transfer_from(&mut self, _: TransferFrom);
+fn transfer_from_contract(&mut self, _: TransferFromContract);
 fn approve(&mut self, _: Approve);
 ```
 
-<!-- TODO: note on cryptography and public key types -->
+For this contract we use BLS12_381 public keys, since Dusk has native support for them. However,
+implementers of the token standard may choose a different type of cryptography for their own token.
 
 ### Events
 
@@ -90,3 +92,10 @@ Transaction sizes are a consideration for any chain, and given that deployment c
 deployed it is in the best interests of contract developers to minimize the payload. As such we
 include a script that downloads a tool that strips the compiled binary of any superfluous
 information such as debug symbols.
+
+#### Nonces
+
+To prevent replay, external accounts have to use a nonce in their calls to the token contract. These
+nonces must be sequential, with the next successive number being +1 the previous. These nonces are
+kept in the contract's state, and function as an effective count of the number of calls an account
+has performed.

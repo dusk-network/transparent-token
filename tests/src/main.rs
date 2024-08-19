@@ -11,16 +11,22 @@ use rand::SeedableRng;
 
 use ttoken_types::*;
 
-const BYTECODE: &[u8] = include_bytes!("../../build/ttoken_contract.wasm");
-const OWNER: [u8; 64] = [0u8; 64];
+const TOKEN_BYTECODE: &[u8] = include_bytes!("../../build/ttoken_contract.wasm");
+const HOLDER_BYTECODE: &[u8] = include_bytes!("../../build/ttoken_test_contract.wasm");
+
+const TOKEN_ID: ContractId = ContractId::from_bytes([1; 32]);
+const HOLDER_ID: ContractId = ContractId::from_bytes([2; 32]);
+
 const INITIAL_BALANCE: u64 = 1000;
+const INITIAL_HOLDER_BALANCE: u64 = 1000;
+
+const OWNER: [u8; 64] = [0u8; 64];
 
 type Result<T, Error = PiecrustError> = std::result::Result<T, Error>;
 
 struct ContractSession {
     deploy_pk: PublicKey,
     deploy_sk: SecretKey,
-    contract: ContractId,
     session: Session,
 }
 
@@ -34,21 +40,36 @@ impl ContractSession {
         let deploy_pk = PublicKey::from(&deploy_sk);
 
         let deploy_account = Account::External(deploy_pk);
+        let holder_account = Account::Contract(HOLDER_ID);
 
-        let contract = session
+        session
             .deploy(
-                BYTECODE,
+                TOKEN_BYTECODE,
                 ContractData::builder()
                     .owner(OWNER)
-                    .constructor_arg(&(deploy_account, INITIAL_BALANCE)),
+                    .constructor_arg(&vec![
+                        (deploy_account, INITIAL_BALANCE),
+                        (holder_account, INITIAL_HOLDER_BALANCE),
+                    ])
+                    .contract_id(TOKEN_ID),
                 u64::MAX,
             )
-            .expect("Deploying the contract should succeed");
+            .expect("Deploying the token contract should succeed");
+
+        session
+            .deploy(
+                HOLDER_BYTECODE,
+                ContractData::builder()
+                    .owner(OWNER)
+                    .constructor_arg(&(TOKEN_ID, INITIAL_HOLDER_BALANCE))
+                    .contract_id(HOLDER_ID),
+                u64::MAX,
+            )
+            .expect("Deploying the holder contract should succeed");
 
         Self {
             deploy_sk,
             deploy_pk,
-            contract,
             session,
         }
     }
@@ -57,24 +78,34 @@ impl ContractSession {
         self.deploy_pk
     }
 
-    fn call<A, R>(&mut self, fn_name: &str, fn_arg: &A) -> Result<CallReceipt<R>>
+    fn call_token<A, R>(&mut self, fn_name: &str, fn_arg: &A) -> Result<CallReceipt<R>>
     where
         A: for<'b> Serialize<StandardBufSerializer<'b>>,
         A::Archived: for<'b> CheckBytes<DefaultValidator<'b>>,
         R: Archive,
         R::Archived: Deserialize<R, Infallible> + for<'b> CheckBytes<DefaultValidator<'b>>,
     {
-        self.session.call(self.contract, fn_name, fn_arg, u64::MAX)
+        self.session.call(TOKEN_ID, fn_name, fn_arg, u64::MAX)
+    }
+
+    fn call_holder<A, R>(&mut self, fn_name: &str, fn_arg: &A) -> Result<CallReceipt<R>>
+    where
+        A: for<'b> Serialize<StandardBufSerializer<'b>>,
+        A::Archived: for<'b> CheckBytes<DefaultValidator<'b>>,
+        R: Archive,
+        R::Archived: Deserialize<R, Infallible> + for<'b> CheckBytes<DefaultValidator<'b>>,
+    {
+        self.session.call(HOLDER_ID, fn_name, fn_arg, u64::MAX)
     }
 
     fn account(&mut self, account: impl Into<Account>) -> AccountInfo {
-        self.call("account", &account.into())
+        self.call_token("account", &account.into())
             .expect("Querying an account should succeed")
             .data
     }
 
     fn allowance(&mut self, owner: impl Into<Account>, spender: impl Into<Account>) -> u64 {
-        self.call(
+        self.call_token(
             "allowance",
             &Allowance {
                 owner: owner.into(),
@@ -130,7 +161,7 @@ fn transfer() {
 
     let transfer = Transfer::new(&session.deploy_sk, pk, TRANSFERRED_AMOUNT, 1);
     session
-        .call::<_, ()>("transfer", &transfer)
+        .call_token::<_, ()>("transfer", &transfer)
         .expect("Transferring should succeed");
 
     assert_eq!(
@@ -142,6 +173,78 @@ fn transfer() {
         session.account(pk).balance,
         TRANSFERRED_AMOUNT,
         "The account transferred to should have the transferred amount"
+    );
+}
+
+#[test]
+fn transfer_to_contract() {
+    const TRANSFERRED_AMOUNT: u64 = INITIAL_BALANCE / 2;
+
+    let mut session = ContractSession::new();
+
+    assert_eq!(
+        session.account(session.deploy_pk()).balance,
+        INITIAL_BALANCE,
+        "The deployed account should have the initial balance"
+    );
+    assert_eq!(
+        session.account(HOLDER_ID).balance,
+        INITIAL_HOLDER_BALANCE,
+        "The contract to transfer to should have its initial balance"
+    );
+
+    let transfer = Transfer::new(&session.deploy_sk, HOLDER_ID, TRANSFERRED_AMOUNT, 1);
+    session
+        .call_token::<_, ()>("transfer", &transfer)
+        .expect("Transferring should succeed");
+
+    assert_eq!(
+        session.account(session.deploy_pk()).balance,
+        INITIAL_BALANCE - TRANSFERRED_AMOUNT,
+        "The deployed account should have the transferred amount subtracted"
+    );
+    assert_eq!(
+        session.account(HOLDER_ID).balance,
+        INITIAL_HOLDER_BALANCE + TRANSFERRED_AMOUNT,
+        "The contract transferred to should have the transferred amount added"
+    );
+}
+
+#[test]
+fn transfer_from_contract() {
+    const TRANSFERRED_AMOUNT: u64 = INITIAL_BALANCE / 2;
+
+    let mut session = ContractSession::new();
+
+    assert_eq!(
+        session.account(session.deploy_pk()).balance,
+        INITIAL_BALANCE,
+        "The deployed account should have the initial balance"
+    );
+    assert_eq!(
+        session.account(HOLDER_ID).balance,
+        INITIAL_HOLDER_BALANCE,
+        "The contract to transfer to should have its initial balance"
+    );
+
+    let transfer = TransferFromContract {
+        to: Account::External(session.deploy_pk()),
+        from: None,
+        value: TRANSFERRED_AMOUNT,
+    };
+    session
+        .call_holder::<_, ()>("token_send", &transfer)
+        .expect("Transferring should succeed");
+
+    assert_eq!(
+        session.account(session.deploy_pk()).balance,
+        INITIAL_BALANCE + TRANSFERRED_AMOUNT,
+        "The deployed account should have the transferred amount added"
+    );
+    assert_eq!(
+        session.account(HOLDER_ID).balance,
+        INITIAL_HOLDER_BALANCE - TRANSFERRED_AMOUNT,
+        "The contract transferred to should have the transferred amount subtracted"
     );
 }
 
@@ -163,7 +266,7 @@ fn approve() {
 
     let approve = Approve::new(&session.deploy_sk, pk, APPROVED_AMOUNT, 1);
     session
-        .call::<_, ()>("approve", &approve)
+        .call_token::<_, ()>("approve", &approve)
         .expect("Approving should succeed");
 
     assert_eq!(
@@ -202,7 +305,7 @@ fn transfer_from() {
 
     let approve = Approve::new(&session.deploy_sk, pk, APPROVED_AMOUNT, 1);
     session
-        .call::<_, ()>("approve", &approve)
+        .call_token::<_, ()>("approve", &approve)
         .expect("Approving should succeed");
 
     assert_eq!(
@@ -213,7 +316,7 @@ fn transfer_from() {
 
     let transfer_from = TransferFrom::new(&sk, session.deploy_pk(), pk, TRANSFERRED_AMOUNT, 1);
     session
-        .call::<_, ()>("transfer_from", &transfer_from)
+        .call_token::<_, ()>("transfer_from", &transfer_from)
         .expect("Transferring from should succeed");
 
     assert_eq!(

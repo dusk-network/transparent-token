@@ -1548,6 +1548,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ttoken-test-contract"
+version = "0.1.0"
+dependencies = [
+ "execution-core",
+ "rusk-abi",
+ "ttoken-types",
+]
+
+[[package]]
 name = "ttoken-tests"
 version = "0.1.0"
 dependencies = [
