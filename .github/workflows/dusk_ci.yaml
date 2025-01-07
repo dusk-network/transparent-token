@@ -1,0 +1,22 @@
+on: [pull_request]
+
+name: Continuous integration
+
+# Jobs run on core
+jobs:
+  dusk_analysis:
+    name: Dusk Analyzer
+    uses: dusk-network/.github/.github/workflows/dusk-analysis.yml@main
+
+  #code_analysis:
+  #  name: Code Analysis
+  #  uses: dusk-network/.github/.github/workflows/code-analysis.yml@main
+  #  with:
+  #    clippy_default: false
+  #    clippy_args: --features=rkyv/size_32
+
+  #test:
+  #  name: Run tests
+  #  uses: dusk-network/.github/.github/workflows/run-tests.yml@main
+  #  with:
+  #    test_flags: --features=rkyv-impl,size_32
