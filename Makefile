@@ -1,11 +1,16 @@
 COMPILER_VERSION=v0.2.0
 
-all: contract
+all: contract ## Build everything
 
-test: contract test-contract
+help: ## Display this help screen
+	@grep -h \
+		-E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+test: contract test-contract ## Run the tests
 	@cargo test --release --manifest-path=tests/Cargo.toml
 
-contract: setup-compiler
+contract: setup-compiler ## Compile the contract
 	@RUSTFLAGS="-C link-args=-zstack-size=65536" \
 	cargo +dusk build \
 	  --release \
@@ -20,7 +25,7 @@ contract: setup-compiler
 		target/wasm64-unknown-unknown/release/% \
 		build/%
 
-test-contract: setup-compiler
+test-contract: setup-compiler ## Compile the test-contract
 	@RUSTFLAGS="-C link-args=-zstack-size=65536" \
 	cargo +dusk build \
 	  --release \
@@ -35,10 +40,10 @@ test-contract: setup-compiler
 		target/wasm64-unknown-unknown/release/% \
 		build/%
 
-setup-compiler:
+setup-compiler: ## Run the setup-compiler script
 	@./scripts/setup-compiler.sh $(COMPILER_VERSION)
 
-clean:
+clean: ## Clean the build artifacts
 	@cargo clean
 	@rm -rf build
 
