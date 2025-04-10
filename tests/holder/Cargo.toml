@@ -1,11 +1,10 @@
 [package]
-name = "ttoken-contract"
-authors.workspace = true
+name = "tt-holder-contract"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-ttoken-types = { workspace = true }
+tt-core = { workspace = true }
 
 dusk-core = { workspace = true, features = ["abi-dlmalloc"] }
 
