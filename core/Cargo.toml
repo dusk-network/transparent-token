@@ -1,6 +1,5 @@
 [package]
-name = "ttoken-types"
-authors.workspace = true
+name = "tt-core"
 version.workspace = true
 edition.workspace = true
 

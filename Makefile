@@ -1,15 +1,20 @@
 COMPILER_VERSION=v0.2.0
 
-all: contract
+all: token
 
-test: contract test-contract
-	@cargo test --release --manifest-path=tests/Cargo.toml
+help: ## Display this help screen
+	@grep -h \
+		-E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-contract: setup-compiler
+test: ## Run the tests
+	$(MAKE) -C ./token/ $@
+
+token: setup-compiler ## Compile the token-contract
 	@RUSTFLAGS="-C link-args=-zstack-size=65536" \
 	cargo +dusk build \
 	  --release \
-	  --manifest-path=contract/Cargo.toml \
+	  --manifest-path=token/Cargo.toml \
 	  --color=always \
 	  -Z build-std=core,alloc \
 	  --target wasm64-unknown-unknown
@@ -20,11 +25,11 @@ contract: setup-compiler
 		target/wasm64-unknown-unknown/release/% \
 		build/%
 
-test-contract: setup-compiler
+holder-contract: setup-compiler ## Compile the holder-contract used for testing
 	@RUSTFLAGS="-C link-args=-zstack-size=65536" \
 	cargo +dusk build \
 	  --release \
-	  --manifest-path=tests/contract/Cargo.toml \
+	  --manifest-path=tests/holder/Cargo.toml \
 	  --color=always \
 	  -Z build-std=core,alloc \
 	  --target wasm64-unknown-unknown
@@ -35,11 +40,15 @@ test-contract: setup-compiler
 		target/wasm64-unknown-unknown/release/% \
 		build/%
 
-setup-compiler:
+
+clippy: ## Run clippy
+	$(MAKE) -C ./token/ $@
+
+setup-compiler: ## Run the setup-compiler script
 	@./scripts/setup-compiler.sh $(COMPILER_VERSION)
 
-clean:
+clean: ## Clean the build artifacts
 	@cargo clean
 	@rm -rf build
 
-.PHONY: all test contract test-contract clean setup-compiler
+.PHONY: all test token holder-contract clean setup-compiler

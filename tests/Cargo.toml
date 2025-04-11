@@ -1,13 +1,12 @@
 [package]
-name = "ttoken-tests"
-authors.workspace = true
+name = "tt-tests"
 version.workspace = true
 edition.workspace = true
 
 publish = false
 
 [dependencies]
-ttoken-types = { workspace = true }
+tt-core = { workspace = true }
 
 dusk-core = { workspace = true }
 dusk-vm = { workspace = true }
@@ -15,4 +14,4 @@ dusk-vm = { workspace = true }
 bytecheck = { workspace = true }
 rkyv = { workspace = true }
 
-rand = "0.8.5"
+rand = { workspace = true }
